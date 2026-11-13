@@ -250,6 +250,10 @@ def task(project, key, status, url=None, cost=None):
     s = load(project)
     if status == 'intent':
         environment.require_ready(HOME)
+        reference = s['checks'].get('reference', {})
+        reference_evidence = Path(reference.get('evidence', ''))
+        if reference.get('status') != 'pass' or not reference_evidence.is_file() or sha(reference_evidence) != reference.get('sha256'):
+            raise ValueError('Confirm the reference views with the user and record reference before model generation.')
         if s.get('blocker'):
             raise ValueError('Resolve the recorded blocker before starting a new task.')
         unresolved = [k for k, v in s['tasks'].items() if v['status'] in ('intent', 'unknown')]

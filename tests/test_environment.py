@@ -58,6 +58,7 @@ class EnvironmentTests(unittest.TestCase):
             w.task(project, 'head', 'intent')
         e.verify(w.HOME, w.save, 'vrm-addon', self.report, 'verified-version', 'ready', self.report)
         w.record(project, 'environment', 'pass', self.report)
+        w.record(project, 'reference', 'pass', self.report)
         w.task(project, 'head', 'intent')
 
     def test_incompatible_runtime_cannot_be_ready(self):

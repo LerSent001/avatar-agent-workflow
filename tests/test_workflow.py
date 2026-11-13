@@ -31,6 +31,7 @@ class WorkflowTests(unittest.TestCase):
         w.register_model(self.project, self.vrm, self.source)
         self.evidence = self.root / 'report.md'
         self.evidence.write_text('Test evidence only; not a real avatar acceptance.')
+        w.record(self.project, 'reference', 'pass', self.evidence)
 
     def tearDown(self):
         w.HOME = self.old_home
@@ -75,6 +76,20 @@ class WorkflowTests(unittest.TestCase):
             w.record(self.project, c, 'pass', self.evidence)
         s = w.load(self.project); s['blocker'] = {'reason': 'insufficient_credits'}
         self.assertFalse(w.readiness(s)['ready'])
+
+    def test_unconfirmed_reference_blocks_model_generation(self):
+        state = w.load(self.project)
+        state['checks'].pop('reference')
+        w.save(w.state_path(self.project), state)
+        with self.assertRaises(ValueError):
+            w.task(self.project, 'head', 'intent')
+        w.record(self.project, 'reference', 'pass', self.evidence)
+        w.task(self.project, 'head', 'intent')
+
+    def test_changed_reference_report_requires_confirmation(self):
+        self.evidence.write_text('Updated views awaiting user confirmation')
+        with self.assertRaises(ValueError):
+            w.task(self.project, 'head', 'intent')
 
     def test_credit_and_login_blockers_prevent_new_task(self):
         for reason in ('insufficient_credits', 'balance_unknown', 'login_required', 'permission_required'):
