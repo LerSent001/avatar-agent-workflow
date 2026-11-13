@@ -1,0 +1,6 @@
+interface:
+  display_name: "角色制作"
+  short_description: "从角色图片制作带骨骼、表情与动态部件的 VRM，并完成摄像头动作检查"
+  default_prompt: "使用 $avatar-character，帮我把附图制作成可动角色。"
+policy:
+  allow_implicit_invocation: true
