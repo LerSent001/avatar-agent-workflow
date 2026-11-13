@@ -1,64 +1,73 @@
 # Avatar Agent Workflow
 
-从一张角色插画开始，在 AI Agent 的协助下制作带骨骼、表情和摆动效果的 VRM 角色，并使用摄像头测试动作跟踪。
-
-项目串联 Charakuru、Tripo、Blender 和 XR Animator，提供环境准备、制作引导、进度保存与模型检查流程。
+将角色插画制作成可动的 VRM 角色。由 AI Agent 协助准备软件、生成模型、绑定骨骼与表情，并在 XR Animator 中完成摄像头动作测试。
 
 ## 开始使用
 
-将本仓库链接和一张角色全身图发给你的 AI Agent：
+把本仓库链接和角色图片发给你的 AI Agent：
 
-> 请按照 https://github.com/LerSent001/avatar-agent-workflow 的使用说明，帮我把这张图制作成可动角色。
+> 请按照 https://github.com/LerSent001/avatar-agent-workflow 的流程，帮我把这张图片制作成可动角色。
 
-Agent 会检查电脑环境，协助下载和配置所需软件，然后引导你完成制作。已有的兼容软件可以直接复用。需要登录、补充积分或确认角色外观时，它会提示你；处理完成后可以继续之前的进度。
+Agent 会读取[执行入口](AGENTS.md)，引导你完成下面的流程。
 
-执行入口：[AGENTS.md](AGENTS.md)。
+## 需要准备
 
-## 准备什么
+- **角色图片**：PNG、JPEG 或 WebP，建议使用头部、四肢和脚完整可见的全身图。已有三视图也可以直接提供。
+- **具备电脑操作能力的 AI Agent**：能够操作本地文件、运行程序及控制浏览器；补充视图时需要 Image 图像生成能力。
+- **Tripo 账号与积分**：用于模型、贴图等生成任务，费用按服务实际使用情况计算。
+- **摄像头**：用于最后的面部、身体和手部动作测试。
 
-- **角色图片**：PNG、JPEG 或 WebP 格式，建议提供头部、四肢和脚完整可见的全身图。
-- **AI Agent**：需要能够读写本地文件、运行程序并操作浏览器或桌面；需要补充参考图时，还需具备图像生成能力。
-- **Tripo 账号与积分**：用于生成模型和贴图，费用按 Tripo 实际使用情况计算。
-- **摄像头**：用于在 XR Animator 中测试面部、身体和手部跟踪。
+本流程主要适用于有四肢的人形及动物角色。复杂服饰、特殊比例和面部结构可能需要额外调整。
 
-## 制作流程
+## 完整使用流程
 
-1. **准备环境** — 检查并配置所需软件。
-2. **确认造型** — 整理参考图，选择模型候选，调整头身比例与贴图。
-3. **绑定角色** — 处理骨骼、权重，以及适合角色设计的表情和摆动部位。
-4. **检查模型** — 检查动作变形、材质和导出文件。
-5. **摄像头测试** — 在 XR Animator 中测试转头、眨眼、张嘴、抬手等动作。
-6. **导出成果** — 整理模型、可编辑源文件、预览和检查报告。
+### 1. 准备软件
 
-制作过程保存任务记录，便于中断后继续。复杂服装、特殊比例和面部结构可能需要额外修复；造型选择与最终效果由你确认。
+Agent 检查电脑环境，协助配置 Charakuru、Blender、VRM 插件、XR Animator 及所需运行环境。软件从官方渠道获取，兼容的已有安装可以复用。
 
-## 使用的软件
+### 2. 确认参考图
 
-| 工具 | 用途 |
+Agent 检查角色外观、比例和现有视角。如果只有正面图，会询问是否使用 Image 补充正面、侧面和背面的三视图。生成结果由你确认后用于建模；也可以自行提供参考视图。
+
+### 3. 登录 Tripo
+
+Agent 打开 Tripo 并检查登录状态和积分。你在官方页面完成注册或登录；积分不足时会收到提示。确认制作费用和预算后开始生成。
+
+### 4. 制作模型
+
+通过 Charakuru 的制作流程选择模型候选、调整头身比例、完成部件组装和贴图。Agent 会展示需要确认的外观，由你选择后继续。
+
+### 5. 绑定与检查
+
+配置身体和四肢的骨骼、权重，并根据角色设计制作眨眼、张嘴等表情，以及头发、耳朵、尾巴等部位的摆动效果。检查动作变形、材质和 VRM 导出结果。
+
+### 6. 摄像头测试
+
+在 XR Animator 中载入模型，授权摄像头后，按引导完成转头、眨眼、张嘴、抬手和挥手等动作。发现问题后调整并复测。暂时无法使用摄像头时，可保存进度，之后继续。
+
+### 7. 获取成果
+
+确认模型名称、作者和使用条件后，获得：
+
+| 文件 | 用途 |
 |---|---|
-| [Charakuru](https://github.com/nanocle/Charakuru) | 角色制作流程与分部处理 |
-| [Tripo](https://studio.tripo3d.ai/) | 模型与贴图生成 |
-| [Blender](https://www.blender.org/) + [VRM Add-on](https://github.com/saturday06/VRM-Addon-for-Blender) | 模型编辑、骨骼绑定与 VRM 导出 |
-| [XR Animator](https://github.com/ButzYung/SystemAnimatorOnline) | 必需的摄像头动作测试工具 |
+| VRM 模型 | 在支持 VRM 的应用中使用 |
+| Blender 源文件 | 继续编辑角色 |
+| 参考图与检查资料 | 查看角色设计及动作检查结果 |
+| 使用说明与文件清单 | 查找文件、加载模型并核对交付内容 |
 
-软件从官方渠道获取。Node.js、Python 等运行环境由 Agent 一并检查，具体配置见[安装指南](docs/INSTALL.md)。
+Agent 会提供交付文件的位置和 XR Animator 加载方法。保留原项目文件夹，后续可以继续修改。
 
-## 输出文件
+## 中断后继续
 
-- **VRM 模型**：用于支持 VRM 的应用。
-- **Blender 源文件**：方便继续修改角色。
-- **预览与检查报告**：记录已完成的检查和需要继续调整的部分。
+将原项目文件夹交给 Agent，并告诉它继续制作。Agent 会读取已保存的进度和任务状态，从未完成的步骤继续。登录、积分或系统权限问题处理好后，也可以直接继续当前项目。
 
-## 项目状态
+## 详细指南
 
-当前为早期版本，主要面向有四肢的人形及可爱动物角色。下载与进度管理工具已完成基础测试，完整制作流程仍需更多实际验证。各平台的验证范围见[开发文档](docs/DEVELOPMENT.md)。
+[软件准备](docs/INSTALL.md) · [参考图与制作](docs/WORKFLOW.md) · [模型检查与交付](docs/ACCEPTANCE.md) · [常见问题](docs/TROUBLESHOOTING.md)
 
-## 文档
+## 工具与许可
 
-[安装指南](docs/INSTALL.md) · [制作流程](docs/WORKFLOW.md) · [模型与动作检查](docs/ACCEPTANCE.md) · [常见问题](docs/TROUBLESHOOTING.md) · [参与贡献](CONTRIBUTING.md)
+本流程使用 [Charakuru](https://github.com/nanocle/Charakuru)、[Tripo](https://studio.tripo3d.ai/)、[Blender](https://www.blender.org/)、[VRM Add-on](https://github.com/saturday06/VRM-Addon-for-Blender) 和 [XR Animator](https://github.com/ButzYung/SystemAnimatorOnline)。
 
-## 许可证与致谢
-
-本项目原创代码和文档使用 [MIT License](LICENSE)。
-
-感谢 Charakuru、Blender、VRM Add-on 和 XR Animator 提供的工具。Charakuru 从官方发布页单独下载，采用其自己的许可，并非 MIT。第三方软件与服务遵循各自条款，详见[第三方说明](THIRD_PARTY_NOTICES.md)。
+本项目原创代码和文档采用 [MIT License](LICENSE)。Charakuru 从官方单独下载，采用其自己的许可，并非 MIT。第三方软件、图像生成和模型生成服务遵循各自的使用条件及费用规则，详见[第三方说明](THIRD_PARTY_NOTICES.md)。
