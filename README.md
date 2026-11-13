@@ -6,17 +6,17 @@
 
 首次把链接发给 Agent：
 
-> 帮我安装这个角色制作 Skill：https://github.com/LerSent001/avatar-agent-workflow
+> 帮我安装这个角色制作工作流：https://github.com/LerSent001/avatar-agent-workflow
 
 安装后，发送角色图片并说：
 
 > 帮我制作这个角色。
 
-无需重复发送链接。安装时只添加 Skill 入口，Blender 等软件会在首次制作时检查，缺少时由 Agent 询问是否安装。
+无需重复发送链接。安装时只添加工作流入口，Blender 等软件会在首次制作时检查，缺少时由 Agent 询问是否安装。
 
-支持 Skill 的 Agent 可根据请求自动选择“角色制作”；也可以在技能列表中手动选择。Codex 中可使用 `$avatar-character` 明确调用。具体安装步骤见 [Skill 安装指南](docs/SKILL_INSTALL.md)。
+安装完成后，Agent 可根据请求调用“角色制作”；也可以在宿主的技能列表中选择该入口。具体步骤见[工作流安装指南](docs/SKILL_INSTALL.md)。
 
-也可以不安装 Skill，直接把本仓库链接和图片交给 Agent，按[执行入口](AGENTS.md)开始制作。
+也可以不安装工作流入口，直接把本仓库链接和图片交给 Agent，按[执行入口](AGENTS.md)开始制作。
 
 ## 需要准备
 

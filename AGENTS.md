@@ -1,6 +1,6 @@
 # Agent 工作流程
 
-用户要求安装工作流或 Skill 时，按 [Skill 安装步骤](docs/SKILL_INSTALL.md) 安装 `skills/avatar-character`，完成后结束安装任务。
+用户要求安装工作流或 Skill 时，按 [工作流安装步骤](docs/SKILL_INSTALL.md) 安装 `skills/avatar-character`，完成后结束安装任务。
 
 用户要求制作或继续角色时，按下面步骤完成环境准备、模型制作、绑定、检查和交付。
 
