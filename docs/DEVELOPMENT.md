@@ -9,14 +9,14 @@ python3 scripts/workflow.py doctor
 
 已提供 [CI 模板](ci-template.yml)，可在 Windows、macOS 和 Linux 运行本地工具测试，不调用付费服务、不开摄像头、不下载大软件包。
 
-首次发布使用的 GitHub 授权缺少 workflow 权限，因此模板暂放在 docs 中，尚未启用/运行。获得相应权限后移至 `.github/workflows/tests.yml` 即可启用；不得把模板存在说成三系统测试通过。
+自动测试尚未启用。维护者可将模板放入 `.github/workflows/tests.yml` 启用 GitHub Actions；提交该文件需要相应的仓库权限。
 
 ## 初版验证范围（2026-11-13）
 
 - macOS ARM64 / Python 3.9：本地 8 项测试通过，覆盖状态恢复、防重复任务、任务地址记录、必需真人检查、证据变化失效、阻塞状态、平台选择与 ZIP 路径安全。
 - Charakuru 1.1.1：通过本仓库工具实际从官方发布地址下载、与官方 SHA-256 比对、解压并确认 package.json/Node 要求。
-- XR Animator：依赖清单取自官方发布 API，包含各平台包及发行方 SHA-256。当前机器已有 XR，可按安装指南复用；本次未重新下载约 467 MB 的 macOS 包，也没有以新项目重新进行真人捕捉。
-- 全新 Windows/Linux 环境的软件安装、上游制作联动、付费生成到真人动捕的完整端到端流程尚未验收。CI 成功不代表这些项目通过。
+- XR Animator：依赖清单取自官方发布 API，包含各平台包及发行方 SHA-256。新环境安装与真人捕捉流程尚待验证。
+- 全新 Windows/Linux 环境的软件安装、上游制作联动、付费生成到真人动捕的完整端到端流程尚未验收。基础工具测试与完整制作流程分别验证。
 
 ## 更新依赖
 

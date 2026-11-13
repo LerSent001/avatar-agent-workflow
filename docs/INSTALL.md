@@ -14,7 +14,7 @@
 | XR Animator | https://github.com/ButzYung/SystemAnimatorOnline/releases | 打开桌面程序、载入最终模型、接摄像头 |
 | Blender MCP（上游流程需要时） | 根据宿主已安装连接器的官方说明 | 实际执行简单场景查询，不只看到配置文件 |
 
-没有浏览器时从浏览器厂商官方渠道安装支持的桌面 Chromium 浏览器。不要安装直播伴侣、OBS 或无关软件。
+没有浏览器时从浏览器厂商官方渠道安装支持的桌面 Chromium 浏览器。
 
 ## Charakuru 和 XR 的下载工具
 
