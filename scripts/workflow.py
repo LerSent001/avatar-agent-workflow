@@ -198,6 +198,38 @@ def init(project, image):
     return s
 
 
+MODEL_CHECKS = ('geometry', 'rig', 'expressions', 'springs', 'export_reimport', 'xr_loaded', 'live_capture')
+
+
+def current_model(s):
+    model = s.get('model', {})
+    for key in ('vrm', 'source'):
+        item = model.get(key, {})
+        p = Path(item.get('path', ''))
+        if not p.is_file() or sha(p) != item.get('sha256'):
+            raise ValueError('Register the current VRM and Blender source with model before recording model checks.')
+    return model['revision']
+
+
+def register_model(project, vrm, source):
+    s = load(project)
+    files = {}
+    for key, path, suffix in (('vrm', vrm, '.vrm'), ('source', source, '.blend')):
+        p = Path(path).resolve()
+        if not p.is_file() or p.suffix.lower() != suffix:
+            raise ValueError('Provide existing .vrm and .blend model files.')
+        files[key] = {'path': str(p), 'sha256': sha(p)}
+    revision = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+    if revision != s.get('model', {}).get('revision'):
+        for check in MODEL_CHECKS:
+            if check in s['checks']:
+                s['checks'][check]['status'] = 'pending'
+        s['model'] = {**files, 'revision': revision}
+        s['history'].append({'event': 'model', 'revision': revision, 'at': now()})
+        save(state_path(project), s)
+    return s['model']
+
+
 def record(project, check, status, evidence):
     s = load(project)
     if check != 'reference' and status in ('pass', 'not_applicable'):
@@ -207,7 +239,8 @@ def record(project, check, status, evidence):
         raise ValueError('Evidence must be an existing report, screenshot, or user test record.')
     if check in ('environment', 'xr_loaded', 'live_capture', 'rig', 'export_reimport') and status == 'not_applicable':
         raise ValueError('This mandatory check cannot be skipped.')
-    s['checks'][check] = {'status': status, 'evidence': str(e), 'sha256': sha(e), 'at': now()}
+    revision = current_model(s) if check in MODEL_CHECKS and status in ('pass', 'not_applicable') else None
+    s['checks'][check] = {'status': status, 'evidence': str(e), 'sha256': sha(e), 'at': now(), 'model_revision': revision}
     s['history'].append({'event': 'check', 'check': check, 'status': status, 'at': now()})
     save(state_path(project), s)
     return s['checks'][check]
@@ -217,6 +250,11 @@ def task(project, key, status, url=None, cost=None):
     s = load(project)
     if status == 'intent':
         environment.require_ready(HOME)
+        if s.get('blocker'):
+            raise ValueError('Resolve the recorded blocker before starting a new task.')
+        unresolved = [k for k, v in s['tasks'].items() if v['status'] in ('intent', 'unknown')]
+        if unresolved:
+            raise ValueError('Resolve existing submission status first: ' + ', '.join(unresolved))
     old = s['tasks'].get(key)
     if old and status == 'intent':
         raise ValueError('Task key exists. Inspect the original task; never resubmit blindly.')
@@ -224,6 +262,15 @@ def task(project, key, status, url=None, cost=None):
         raise ValueError('Record an intent before any paid submission.')
     if status in ('submitted', 'completed') and not (url or (old or {}).get('url')):
         raise ValueError('Record the actual task URL after submission.')
+    transitions = {
+        'intent': ('submitted', 'unknown', 'failed', 'cancelled'),
+        'submitted': ('submitted', 'unknown', 'completed', 'failed', 'cancelled'),
+        'unknown': ('unknown', 'submitted', 'completed', 'failed', 'cancelled'),
+        'completed': ('completed',), 'failed': ('failed',), 'cancelled': ('cancelled',)}
+    if old and status not in transitions[old['status']]:
+        raise ValueError('Invalid task transition; preserve the original task history.')
+    if old and url and old.get('url') and url != old['url']:
+        raise ValueError('An existing task URL cannot be replaced; record a separate attempt.')
     entry = dict(old or {})
     entry.update({'status': status, 'updated_at': now()})
     if url:
@@ -246,11 +293,19 @@ def readiness(s):
         environment.require_ready(HOME)
     except ValueError:
         missing.append('environment_dependencies')
+    try:
+        revision = current_model(s)
+    except ValueError:
+        revision = None
+        missing.append('current_model')
     for c in CHECKS:
         item = s['checks'].get(c, {})
         allowed = ('pass', 'not_applicable') if c in ('expressions', 'springs') else ('pass',)
         if item.get('status') not in allowed:
             missing.append(c)
+            continue
+        if c in MODEL_CHECKS and (revision is None or item.get('model_revision') != revision):
+            missing.append(c + ': model changed')
             continue
         evidence = Path(item.get('evidence', ''))
         if not evidence.is_file() or sha(evidence) != item.get('sha256'):
@@ -276,6 +331,7 @@ def main():
     for cmd in ('download', 'install'):
         p = sub.add_parser(cmd); p.add_argument('name', choices=tuple(deps()))
     p = sub.add_parser('open'); p.add_argument('service', choices=tuple(LINKS))
+    p = sub.add_parser('model'); p.add_argument('project'); p.add_argument('--vrm', required=True); p.add_argument('--source', required=True)
     p = sub.add_parser('init'); p.add_argument('project'); p.add_argument('--image', required=True)
     for cmd in ('status', 'ready'):
         p = sub.add_parser(cmd); p.add_argument('project')
@@ -297,6 +353,7 @@ def main():
         elif a.command == 'download': result = {'archive': str(download(a.name))}
         elif a.command == 'install': result = {'directory': str(unpack(a.name)), 'next': 'Follow docs/INSTALL.md; verify launch.'}
         elif a.command == 'open': result = {'url': LINKS[a.service], 'opened': webbrowser.open(LINKS[a.service])}
+        elif a.command == 'model': result = register_model(a.project, a.vrm, a.source)
         elif a.command == 'init': result = init(a.project, a.image)
         elif a.command == 'status': result = load(a.project)
         elif a.command == 'ready': result = readiness(load(a.project))

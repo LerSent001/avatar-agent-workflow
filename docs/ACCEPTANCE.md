@@ -31,6 +31,14 @@
 
 ## 保存结果
 
+先登记本次检查使用的模型与源文件：
+
+```sh
+python3 scripts/workflow.py model projects/my-avatar --vrm /path/to/avatar.vrm --source /path/to/avatar.blend
+```
+
+模型文件更新后重新登记，相关检查会转为待测状态。
+
 ```sh
 python3 scripts/workflow.py check projects/my-avatar rig pass --evidence projects/my-avatar/reports/rig.json
 python3 scripts/workflow.py check projects/my-avatar live_capture pending --evidence projects/my-avatar/reports/live-capture.md

@@ -48,7 +48,7 @@ class EnvironmentTests(unittest.TestCase):
     def test_plugin_missing_blocks_environment_and_generation(self):
         for name in e.REQUIRED:
             if name != 'vrm-addon':
-                version = '22.0.0' if name == 'node' else '3.11.0'
+                version = {'node': '22.0.0', 'blender': '5.2.3'}.get(name, '3.11.0')
                 e.verify(w.HOME, w.save, name, self.report, version, 'ready', self.report)
         image = self.root / 'image.png'; image.write_bytes(b'fixture')
         project = self.root / 'project'; w.init(project, image)
@@ -63,7 +63,8 @@ class EnvironmentTests(unittest.TestCase):
     def test_incompatible_runtime_cannot_be_ready(self):
         with self.assertRaises(ValueError):
             e.verify(w.HOME, w.save, 'node', self.report, '20.0.0', 'ready', self.report)
-        self.assertIsNone(e.compatible('blender', '5.2.3'))
+        self.assertTrue(e.compatible('blender', '5.2.3'))
+        self.assertFalse(e.compatible('blender', '4.2.23'))
 
     def test_changed_binary_or_report_invalidates_verification(self):
         binary = self.root / 'binary'; binary.write_bytes(b'v1')
@@ -72,6 +73,20 @@ class EnvironmentTests(unittest.TestCase):
         self.assertTrue(e.valid_entry(entry))
         binary.write_bytes(b'v2')
         self.assertFalse(e.valid_entry(entry))
+
+    def test_application_directory_change_requires_verification(self):
+        app = self.root / 'Example.app'
+        app.mkdir()
+        binary = app / 'binary'; binary.write_bytes(b'v1')
+        e.verify(w.HOME, w.save, 'xr-animator', app, '0.36.0', 'ready', self.report)
+        entry = e.read(w.HOME)['dependencies']['xr-animator']
+        self.assertTrue(e.valid_entry(entry))
+        binary.write_bytes(b'upgraded version')
+        self.assertFalse(e.valid_entry(entry))
+
+    def test_incompatible_blender_cannot_be_marked_ready(self):
+        with self.assertRaises(ValueError):
+            e.verify(w.HOME, w.save, 'blender', self.report, '4.2.23', 'ready', self.report)
 
     def test_changed_approval_cannot_authorize_installation(self):
         e.approve(w.HOME, w.save, ['blender'], self.approval)

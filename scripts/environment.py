@@ -18,7 +18,11 @@ def stamp():
 
 
 def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def read(home):
@@ -39,6 +43,8 @@ def compatible(name, version):
         return v >= (3, 9, 0)
     if name == 'node':
         return v >= (22, 0, 0)
+    if name == 'blender':
+        return v[:2] == (5, 2)
     # Other components require checking the selected upstream kit and plugins.
     return None
 
@@ -81,6 +87,19 @@ def candidates(name, home):
     return list(dict.fromkeys(str(p.resolve()) for p in found if p.exists()))
 
 
+def directory_signature(path):
+    rows = []
+    root = Path(path)
+    for base, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in ('__pycache__', '.git'))
+        for name in sorted(dirs + files):
+            p = Path(base) / name
+            st = p.lstat()
+            rows.append((str(p.relative_to(root)), st.st_size, st.st_mtime_ns,
+                         os.readlink(p) if p.is_symlink() else None))
+    return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
+
+
 def valid_entry(entry):
     if entry.get('status') != 'ready':
         return False
@@ -91,6 +110,8 @@ def valid_entry(entry):
     if digest(evidence) != entry.get('evidence_sha256'):
         return False
     if p.is_file() and digest(p) != entry.get('file_sha256'):
+        return False
+    if p.is_dir() and directory_signature(p) != entry.get('directory_signature'):
         return False
     return True
 
@@ -132,12 +153,13 @@ def verify(home, save, name, path, version, status, evidence):
         raise ValueError('Dependency path and verification report must exist.')
     if not version.strip():
         raise ValueError('Record the detected version or integration identifier.')
-    if status == 'ready' and name in ('python', 'node') and compatible(name, version) is not True:
+    if status == 'ready' and name in ('python', 'node', 'blender') and compatible(name, version) is not True:
         raise ValueError('Detected version does not meet the runtime requirement.')
     s = read(home)
     s['dependencies'][name] = {'path': str(p), 'version': version, 'status': status,
          'evidence': str(e), 'evidence_sha256': digest(e), 'at': stamp(),
-         'file_sha256': digest(p) if p.is_file() else None}
+         'file_sha256': digest(p) if p.is_file() else None,
+         'directory_signature': directory_signature(p) if p.is_dir() else None}
     save(Path(home) / 'environment.json', s)
     return s['dependencies'][name]
 

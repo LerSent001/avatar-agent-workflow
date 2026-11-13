@@ -13,7 +13,7 @@ python3 scripts/workflow.py doctor
 
 | 功能 | 状态 |
 |---|---|
-| 项目状态、任务记录、验收门槛、平台选择、归档路径检查 | macOS ARM64 / Python 3.9 下 8 项测试通过 |
+| 项目状态、任务记录、验收门槛、平台选择、归档路径检查 | macOS ARM64 / Python 3.9 下离线测试通过 |
 | Charakuru 1.1.1 官方下载、SHA-256 校验及解压 | 已验证 |
 | XR Animator 全新环境安装与真人捕捉 | 待验证 |
 | Windows/Linux 完整安装与制作流程 | 待验证 |
