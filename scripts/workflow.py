@@ -16,6 +16,9 @@ from urllib.request import Request, urlopen
 import webbrowser
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import environment
+
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path(os.environ.get('AVATAR_WORKFLOW_HOME', str(ROOT / '.local'))).resolve()
 CHECKS = ('reference', 'environment', 'geometry', 'rig', 'expressions', 'springs',
@@ -122,6 +125,9 @@ def validate_zip(z):
 
 
 def unpack(name):
+    authorization = environment.authorize(HOME, save, name)
+    if authorization["action"] == "reuse":
+        return Path(authorization["path"])
     archive = download(name)
     d, _ = resolve(name)
     dest = HOME / 'tools' / name / d['version']
@@ -158,22 +164,14 @@ def unpack(name):
 
 
 def doctor():
-    result = {'platform': platform_key(), 'required': {}, 'capabilities_to_verify': [
-        'browser control', 'image generation when needed', 'local file and process access',
-        'Blender automation', 'XR Animator launch', 'camera consent and live capture']}
-    for name in ('python3', 'node', 'git', 'blender'):
-        path = shutil.which(name)
-        result['required'][name] = {'path': path, 'detected': bool(path)}
-        if path and name in ('node', 'python3'):
-            r = subprocess.run([path, '--version'], capture_output=True, text=True, timeout=10)
-            result['required'][name]['version'] = r.stdout.strip()
-            if name == 'node':
-                result['required'][name]['compatible'] = r.returncode == 0 and int(r.stdout.strip().lstrip('v').split('.')[0]) >= 22
-    for name in deps():
-        result['required'][name] = {'required': True, 'local_receipts': [str(p) for p in
-            (HOME / 'tools' / name).glob('*/.workflow-installed.json')], 'launch_verified': False}
-    result['note'] = 'PATH checks are not exhaustive. Agent must inspect installed applications and register reuse in project evidence. Extraction is not acceptance.'
-    return result
+    return {'platform': platform_key(), **environment.inspect(HOME),
+            'commands': {
+                'blender_plugins': 'probe-blender --path BLENDER_EXECUTABLE',
+                'verify': 'verify-dependency NAME --path PATH --version VERSION --status ready --evidence REPORT',
+                'approval': 'approve-install NAME [NAME ...] --evidence USER_RESPONSE_FILE',
+                'external_install': 'authorize-install NAME',
+                'bundled_installer': 'install charakuru | install xr-animator'},
+            'verification': 'Check each selected version against the installed Charakuru requirements. Verify VRM add-on version and enabled state in the selected Blender; test the Blender control connection and XR launch. Save actual observations as evidence. Installation approval evidence must contain the user response, not an agent-generated approval.'}
 
 
 def state_path(project):
@@ -202,6 +200,8 @@ def init(project, image):
 
 def record(project, check, status, evidence):
     s = load(project)
+    if check != 'reference' and status in ('pass', 'not_applicable'):
+        environment.require_ready(HOME)
     e = Path(evidence).resolve()
     if not e.is_file():
         raise ValueError('Evidence must be an existing report, screenshot, or user test record.')
@@ -215,6 +215,8 @@ def record(project, check, status, evidence):
 
 def task(project, key, status, url=None, cost=None):
     s = load(project)
+    if status == 'intent':
+        environment.require_ready(HOME)
     old = s['tasks'].get(key)
     if old and status == 'intent':
         raise ValueError('Task key exists. Inspect the original task; never resubmit blindly.')
@@ -240,6 +242,10 @@ def task(project, key, status, url=None, cost=None):
 
 def readiness(s):
     missing = []
+    try:
+        environment.require_ready(HOME)
+    except ValueError:
+        missing.append('environment_dependencies')
     for c in CHECKS:
         item = s['checks'].get(c, {})
         allowed = ('pass', 'not_applicable') if c in ('expressions', 'springs') else ('pass',)
@@ -259,6 +265,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('doctor')
+    p = sub.add_parser('probe-blender'); p.add_argument('--path', required=True)
+    p = sub.add_parser('verify-dependency'); p.add_argument('name', choices=environment.REQUIRED)
+    p.add_argument('--path', required=True); p.add_argument('--version', required=True)
+    p.add_argument('--status', choices=('ready', 'incompatible', 'unverified'), required=True)
+    p.add_argument('--evidence', required=True)
+    p = sub.add_parser('approve-install'); p.add_argument('names', nargs='+', choices=environment.REQUIRED)
+    p.add_argument('--evidence', required=True)
+    p = sub.add_parser('authorize-install'); p.add_argument('name', choices=environment.REQUIRED)
     for cmd in ('download', 'install'):
         p = sub.add_parser(cmd); p.add_argument('name', choices=tuple(deps()))
     p = sub.add_parser('open'); p.add_argument('service', choices=tuple(LINKS))
@@ -276,6 +290,10 @@ def main():
     a = parser.parse_args()
     try:
         if a.command == 'doctor': result = doctor()
+        elif a.command == 'probe-blender': result = environment.probe_blender(a.path)
+        elif a.command == 'verify-dependency': result = environment.verify(HOME, save, a.name, a.path, a.version, a.status, a.evidence)
+        elif a.command == 'approve-install': result = environment.approve(HOME, save, a.names, a.evidence)
+        elif a.command == 'authorize-install': result = environment.authorize(HOME, save, a.name)
         elif a.command == 'download': result = {'archive': str(download(a.name))}
         elif a.command == 'install': result = {'directory': str(unpack(a.name)), 'next': 'Follow docs/INSTALL.md; verify launch.'}
         elif a.command == 'open': result = {'url': LINKS[a.service], 'opened': webbrowser.open(LINKS[a.service])}

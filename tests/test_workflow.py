@@ -15,6 +15,13 @@ class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
+        self.old_home = w.HOME
+        w.HOME = self.root / 'environment'
+        verification = self.root / 'environment-report.md'
+        verification.write_text('Mock environment verification for unit tests only.')
+        for name in w.environment.REQUIRED:
+            version = '22.0.0' if name == 'node' else '3.11.0'
+            w.environment.verify(w.HOME, w.save, name, verification, version, 'ready', verification)
         self.image = self.root / 'image.png'
         self.image.write_bytes(b'test fixture')
         self.project = self.root / 'project'
@@ -23,6 +30,7 @@ class WorkflowTests(unittest.TestCase):
         self.evidence.write_text('Test evidence only; not a real avatar acceptance.')
 
     def tearDown(self):
+        w.HOME = self.old_home
         self.temp.cleanup()
 
     def test_resume_cannot_overwrite(self):
