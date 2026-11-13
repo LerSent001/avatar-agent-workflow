@@ -61,3 +61,14 @@ avatar-delivery/
 ```
 
 `manifest.json` 保存交付文件的相对路径和 SHA-256。README 说明加载方法、已完成的检查、已知限制及待测项。保留源文件需要的贴图资源，模型作者和使用条件由用户确认。
+
+
+检查通过后生成交付目录：
+
+```sh
+python3 scripts/workflow.py deliver projects/my-avatar --output /path/to/avatar-delivery --name '角色名称' --author '用户确认的作者' --usage '用户确认的使用条件'
+```
+
+工具复制模型、源文件、参考图和已登记的检查报告，核对文件哈希，并生成使用说明和清单。预览图可作为检查证据登记并随报告交付。交付目录已存在时使用新目录，以保留已有版本。
+
+交付前从新目录重新打开模型及源文件，核对贴图资源，并向用户提供文件入口。继续修改时使用原项目目录及 `status` 恢复进度。

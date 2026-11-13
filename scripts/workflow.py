@@ -182,6 +182,54 @@ def load(project):
     return json.loads(state_path(project).read_text(encoding='utf-8'))
 
 
+def input_revision(project, s):
+    base = state_path(project).parent
+    files = [{'path': s['input'], 'sha256': s['input_sha256']}, *s.get('references', [])]
+    for item in files:
+        p = base / item['path']
+        if not p.is_file() or sha(p) != item['sha256']:
+            raise ValueError('Reference image changed or missing; register the reference files again.')
+    return hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+
+
+def reference_files(project, paths):
+    s = load(project)
+    assets = []
+    base = state_path(project).parent
+    for path in paths:
+        p = Path(path).resolve()
+        if not p.is_file() or p.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):
+            raise ValueError('Provide existing reference image files.')
+        checksum = sha(p)
+        target = base / 'input' / ('view-' + checksum + p.suffix.lower())
+        if p != target.resolve():
+            shutil.copy2(p, target)
+        assets.append({'path': str(target.relative_to(base)), 'sha256': checksum})
+    s['references'] = assets
+    # Explicit re-registration acknowledges the currently stored primary image.
+    s['input_sha256'] = sha(base / s['input'])
+    for name in ('reference', *MODEL_CHECKS):
+        if name in s['checks']:
+            s['checks'][name]['status'] = 'pending'
+    s['history'].append({'event': 'references', 'revision': input_revision(project, s), 'at': now()})
+    save(state_path(project), s)
+    return assets
+
+
+def resolve_failed_task(project, key, evidence):
+    s = load(project)
+    entry = s['tasks'].get(key)
+    if not entry or entry['status'] != 'failed':
+        raise ValueError('Only confirmed failed tasks can be resolved; inspect unknown submissions first.')
+    p = Path(evidence).resolve()
+    if not p.is_file() or not p.read_text(encoding='utf-8').strip():
+        raise ValueError('Provide a report confirming the task failure and credit reconciliation.')
+    entry['resolution'] = {'evidence': str(p), 'sha256': sha(p), 'at': now()}
+    s['history'].append({'event': 'resolve_failed_task', 'key': key, 'at': now()})
+    save(state_path(project), s)
+    return entry
+
+
 def init(project, image):
     p = state_path(project)
     if p.exists():
@@ -240,7 +288,8 @@ def record(project, check, status, evidence):
     if check in ('environment', 'xr_loaded', 'live_capture', 'rig', 'export_reimport') and status == 'not_applicable':
         raise ValueError('This mandatory check cannot be skipped.')
     revision = current_model(s) if check in MODEL_CHECKS and status in ('pass', 'not_applicable') else None
-    s['checks'][check] = {'status': status, 'evidence': str(e), 'sha256': sha(e), 'at': now(), 'model_revision': revision}
+    s['checks'][check] = {'status': status, 'evidence': str(e), 'sha256': sha(e), 'at': now(), 'model_revision': revision,
+                          'input_revision': input_revision(project, s) if check == 'reference' and status == 'pass' else None}
     s['history'].append({'event': 'check', 'check': check, 'status': status, 'at': now()})
     save(state_path(project), s)
     return s['checks'][check]
@@ -252,6 +301,8 @@ def task(project, key, status, url=None, cost=None):
         environment.require_ready(HOME)
         reference = s['checks'].get('reference', {})
         reference_evidence = Path(reference.get('evidence', ''))
+        if reference.get('input_revision') != input_revision(project, s):
+            raise ValueError('Reference images need user confirmation before generation.')
         if reference.get('status') != 'pass' or not reference_evidence.is_file() or sha(reference_evidence) != reference.get('sha256'):
             raise ValueError('Confirm the reference views with the user and record reference before model generation.')
         if s.get('blocker'):
@@ -291,7 +342,7 @@ def task(project, key, status, url=None, cost=None):
     return entry
 
 
-def readiness(s):
+def readiness(s, project):
     missing = []
     try:
         environment.require_ready(HOME)
@@ -302,6 +353,12 @@ def readiness(s):
     except ValueError:
         revision = None
         missing.append('current_model')
+    if project is not None:
+        try:
+            if s['checks'].get('reference', {}).get('input_revision') != input_revision(project, s):
+                missing.append('reference_images')
+        except ValueError:
+            missing.append('reference_images')
     for c in CHECKS:
         item = s['checks'].get(c, {})
         allowed = ('pass', 'not_applicable') if c in ('expressions', 'springs') else ('pass',)
@@ -314,10 +371,66 @@ def readiness(s):
         evidence = Path(item.get('evidence', ''))
         if not evidence.is_file() or sha(evidence) != item.get('sha256'):
             missing.append(c + ': evidence missing or changed')
-    unfinished = [k for k, v in s['tasks'].items() if v['status'] not in ('completed', 'cancelled')]
+    unfinished = []
+    for key, entry in s['tasks'].items():
+        if entry['status'] in ('completed', 'cancelled'):
+            continue
+        resolution = entry.get('resolution', {})
+        report = Path(resolution.get('evidence', ''))
+        if entry['status'] == 'failed' and report.is_file() and sha(report) == resolution.get('sha256'):
+            continue
+        unfinished.append(key)
     return {'ready': not missing and not unfinished and s.get('blocker') is None,
             'missing_checks': missing, 'unfinished_tasks': unfinished, 'blocker': s.get('blocker'),
             'note': 'Recorded evidence must be reviewed by the Agent. This gate does not judge image quality or prove live capture by itself.'}
+
+
+def deliver(project, destination, name, author, usage):
+    s = load(project)
+    status = readiness(s, project)
+    if not status['ready']:
+        raise ValueError('Complete the required checks before final delivery: ' + ', '.join(status['missing_checks'] + status['unfinished_tasks']))
+    if not all(v.strip() for v in (name, author, usage)):
+        raise ValueError('Record the user-confirmed model name, author and usage terms.')
+    dest = Path(destination).resolve()
+    if dest.exists():
+        raise ValueError('Delivery destination exists; choose a new directory.')
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix='.delivery-', dir=dest.parent))
+    files = []
+    def copy(source, relative, expected):
+        target = staging / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        if sha(target) != expected:
+            raise ValueError('A file changed during delivery; recheck the current project.')
+        files.append({'path': str(relative), 'sha256': expected})
+    try:
+        for key, filename in (('vrm', 'avatar.vrm'), ('source', 'avatar.blend')):
+            entry = s['model'][key]
+            copy(entry['path'], filename, entry['sha256'])
+        base = state_path(project).parent
+        copy(base / s['input'], 'reference' + Path(s['input']).suffix, s['input_sha256'])
+        for i, entry in enumerate(s.get('references', [])):
+            copy(base / entry['path'], 'references/view-' + str(i + 1) + Path(entry['path']).suffix, entry['sha256'])
+        checks = {}
+        for check, entry in s['checks'].items():
+            relative = 'reports/' + check + Path(entry['evidence']).suffix
+            copy(entry['evidence'], relative, entry['sha256'])
+            checks[check] = {'status': entry['status'], 'report': relative}
+        readme = ('# ' + name + '\n\nAuthor: ' + author + '\n\nUsage: ' + usage +
+                  '\n\nOpen avatar.vrm using the model file control in XR Animator. Select your camera and enable the required tracking modes.\n'
+                  '\nEdit avatar.blend in Blender. See reports/ for validation results.\n')
+        (staging / 'README.md').write_text(readme, encoding='utf-8')
+        files.append({'path': 'README.md', 'sha256': sha(staging / 'README.md')})
+        manifest = {'schema': 1, 'name': name, 'author': author, 'usage': usage,
+                    'status': 'verified', 'files': files, 'checks': checks, 'created_at': now()}
+        save(staging / 'manifest.json', manifest)
+        staging.rename(dest)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return {'directory': str(dest), 'manifest': str(dest / 'manifest.json'), 'status': 'verified'}
 
 
 def main():
@@ -335,6 +448,10 @@ def main():
     for cmd in ('download', 'install'):
         p = sub.add_parser(cmd); p.add_argument('name', choices=tuple(deps()))
     p = sub.add_parser('open'); p.add_argument('service', choices=tuple(LINKS))
+    p = sub.add_parser('deliver'); p.add_argument('project'); p.add_argument('--output', required=True)
+    p.add_argument('--name', required=True); p.add_argument('--author', required=True); p.add_argument('--usage', required=True)
+    p = sub.add_parser('references'); p.add_argument('project'); p.add_argument('images', nargs='*')
+    p = sub.add_parser('resolve-task'); p.add_argument('project'); p.add_argument('key'); p.add_argument('--evidence', required=True)
     p = sub.add_parser('model'); p.add_argument('project'); p.add_argument('--vrm', required=True); p.add_argument('--source', required=True)
     p = sub.add_parser('init'); p.add_argument('project'); p.add_argument('--image', required=True)
     for cmd in ('status', 'ready'):
@@ -357,10 +474,13 @@ def main():
         elif a.command == 'download': result = {'archive': str(download(a.name))}
         elif a.command == 'install': result = {'directory': str(unpack(a.name)), 'next': 'Follow docs/INSTALL.md; verify launch.'}
         elif a.command == 'open': result = {'url': LINKS[a.service], 'opened': webbrowser.open(LINKS[a.service])}
+        elif a.command == 'deliver': result = deliver(a.project, a.output, a.name, a.author, a.usage)
+        elif a.command == 'references': result = reference_files(a.project, a.images)
+        elif a.command == 'resolve-task': result = resolve_failed_task(a.project, a.key, a.evidence)
         elif a.command == 'model': result = register_model(a.project, a.vrm, a.source)
         elif a.command == 'init': result = init(a.project, a.image)
         elif a.command == 'status': result = load(a.project)
-        elif a.command == 'ready': result = readiness(load(a.project))
+        elif a.command == 'ready': result = readiness(load(a.project), a.project)
         elif a.command == 'check': result = record(a.project, a.name, a.status, a.evidence)
         elif a.command == 'task': result = task(a.project, a.key, a.status, a.url, a.credits)
         elif a.command == 'block':

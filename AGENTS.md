@@ -4,7 +4,9 @@
 
 ## 1. 创建项目
 
-读取 [安装指南](docs/INSTALL.md)，在独立目录准备本仓库。将图片保存到本地，然后初始化项目：
+先确认 Agent 具有本地文件、进程和浏览器/桌面操作能力，并确认用户希望保存项目的位置。下载本仓库到可写的独立目录；有 Git 时可克隆，没有 Git 时使用 GitHub 源码 ZIP 并解压。
+
+检查 Python 3.9+ 是否可用。缺少运行环境时，先取得用户的安装许可，从官方完成安装，再运行项目命令。读取 [安装指南](docs/INSTALL.md)，将图片保存到本地，然后初始化项目：
 
 ```sh
 python3 scripts/workflow.py init projects/my-avatar --image /path/to/character.png
@@ -14,13 +16,15 @@ python3 scripts/workflow.py init projects/my-avatar --image /path/to/character.p
 
 查看图片包含的视角。如果只有正面图，先询问用户是否使用 Image 生成正面、侧面、背面的三视图，等待回复后执行。用户同意后，通过当前 Agent 的 Image 图像生成/编辑工具，以原图为参考生成；展示结果供用户确认，再进入建模。用户已有三视图时直接检查并复用。
 
-用户不希望生成时，可自行补充视图；如选择仅用正面图继续，先确认侧面和背面的未明确细节及当前 Charakuru 流程是否支持该输入。参考图选择和最终确认记录在项目报告中。具体要求见 [制作流程](docs/WORKFLOW.md)。
+用户不希望生成时，可自行补充视图；如选择仅用正面图继续，先确认侧面和背面的未明确细节及当前 Charakuru 流程是否支持该输入。使用 `references` 登记补充视图；参考图选择和最终确认记录在项目报告中。具体要求见 [制作流程](docs/WORKFLOW.md)。
 
 ## 2. 准备环境
 
 执行 `python3 scripts/workflow.py doctor`，结合已安装应用检查环境。复用兼容版本，从官方来源下载缺少的依赖。
 
 完成 Charakuru、Blender、VRM Add-on、Node.js、Python、浏览器及 XR Animator 的配置，验证应用启动、VRM 导入导出和 Blender 自动化连接。Agent 需要本地文件、进程及浏览器/桌面操作能力；补充参考图时需要图像生成能力。缺少能力时给出具体配置步骤。
+
+确认可写空间满足安装需求，并检查摄像头和所需跟踪能力。摄像头暂不可用时，提前说明真人测试将保持待测。
 
 依赖的来源、版本要求与配置方式见 [INSTALL.md](docs/INSTALL.md)，许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
@@ -55,6 +59,6 @@ python3 scripts/workflow.py init projects/my-avatar --image /path/to/character.p
 
 ## 6. 交付
 
-整理 VRM、Blender 源文件、参考图、预览、报告和文件清单。执行 `ready` 检查记录完整性，并核对最终模型效果。交付说明包含使用方法、检查结果及待处理事项。
+整理 VRM、Blender 源文件、参考图、预览、报告和文件清单。执行 `ready` 检查记录完整性，并核对最终模型效果；通过后使用 `deliver` 输出到独立交付目录。向用户提供文件位置、VRM 加载方法和继续编辑的入口。待测版本单独标明待完成项目，保留原项目供继续测试。
 
 模型作者和使用条件由用户确认。项目文件保存在用户的工作目录，发布到公共平台需按用户指定的范围进行。

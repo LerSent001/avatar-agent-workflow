@@ -47,7 +47,7 @@ class WorkflowTests(unittest.TestCase):
         w.task(self.project, 'head-01', 'unknown')
         with self.assertRaises(ValueError):
             w.task(self.project, 'head-01', 'intent')
-        self.assertFalse(w.readiness(w.load(self.project))['ready'])
+        self.assertFalse(w.readiness(w.load(self.project), self.project)['ready'])
 
     def test_task_requires_intent_and_real_url(self):
         with self.assertRaises(ValueError):
@@ -63,19 +63,19 @@ class WorkflowTests(unittest.TestCase):
         for c in w.CHECKS:
             if c != 'live_capture':
                 w.record(self.project, c, 'pass', self.evidence)
-        self.assertFalse(w.readiness(w.load(self.project))['ready'])
+        self.assertFalse(w.readiness(w.load(self.project), self.project)['ready'])
         with self.assertRaises(ValueError):
             w.record(self.project, 'live_capture', 'not_applicable', self.evidence)
         w.record(self.project, 'live_capture', 'pass', self.evidence)
-        self.assertTrue(w.readiness(w.load(self.project))['ready'])
+        self.assertTrue(w.readiness(w.load(self.project), self.project)['ready'])
         self.evidence.write_text('changed report')
-        self.assertFalse(w.readiness(w.load(self.project))['ready'])
+        self.assertFalse(w.readiness(w.load(self.project), self.project)['ready'])
 
     def test_blocker_still_prevents_readiness(self):
         for c in w.CHECKS:
             w.record(self.project, c, 'pass', self.evidence)
         s = w.load(self.project); s['blocker'] = {'reason': 'insufficient_credits'}
-        self.assertFalse(w.readiness(s)['ready'])
+        self.assertFalse(w.readiness(s, self.project)['ready'])
 
     def test_unconfirmed_reference_blocks_model_generation(self):
         state = w.load(self.project)
@@ -118,9 +118,9 @@ class WorkflowTests(unittest.TestCase):
     def test_changed_vrm_invalidates_prior_checks(self):
         for check in w.CHECKS:
             w.record(self.project, check, 'pass', self.evidence)
-        self.assertTrue(w.readiness(w.load(self.project))['ready'])
+        self.assertTrue(w.readiness(w.load(self.project), self.project)['ready'])
         self.vrm.write_bytes(b'new model')
-        self.assertFalse(w.readiness(w.load(self.project))['ready'])
+        self.assertFalse(w.readiness(w.load(self.project), self.project)['ready'])
         with self.assertRaises(ValueError):
             w.record(self.project, 'xr_loaded', 'pass', self.evidence)
         w.register_model(self.project, self.vrm, self.source)
@@ -133,6 +133,48 @@ class WorkflowTests(unittest.TestCase):
         self.source.write_bytes(b'edited source')
         with self.assertRaises(ValueError):
             w.record(self.project, 'export_reimport', 'pass', self.evidence)
+
+    def test_reference_image_change_requires_confirmation(self):
+        stored = self.project / w.load(self.project)['input']
+        stored.write_bytes(b'new reference fixture')
+        with self.assertRaises(ValueError):
+            w.task(self.project, 'head', 'intent')
+        self.assertIn('reference_images', w.readiness(w.load(self.project), self.project)['missing_checks'])
+
+    def test_added_views_invalidate_reference_and_model_checks(self):
+        w.record(self.project, 'rig', 'pass', self.evidence)
+        view = self.root / 'side.png'; view.write_bytes(b'side fixture')
+        w.reference_files(self.project, [view])
+        state = w.load(self.project)
+        self.assertEqual(state['checks']['reference']['status'], 'pending')
+        self.assertEqual(state['checks']['rig']['status'], 'pending')
+        with self.assertRaises(ValueError):
+            w.task(self.project, 'head', 'intent')
+
+    def test_confirmed_failed_attempt_can_be_resolved_after_retry(self):
+        w.task(self.project, 'old', 'intent')
+        w.task(self.project, 'old', 'failed')
+        self.assertIn('old', w.readiness(w.load(self.project), self.project)['unfinished_tasks'])
+        w.resolve_failed_task(self.project, 'old', self.evidence)
+        self.assertNotIn('old', w.readiness(w.load(self.project), self.project)['unfinished_tasks'])
+        w.task(self.project, 'retry', 'intent')
+        w.task(self.project, 'retry', 'unknown')
+        with self.assertRaises(ValueError):
+            w.resolve_failed_task(self.project, 'retry', self.evidence)
+
+    def test_delivery_is_portable_and_does_not_overwrite(self):
+        output = self.root / 'delivery'
+        with self.assertRaises(ValueError):
+            w.deliver(self.project, output, 'Test', 'Test author', 'Test terms')
+        for check in w.CHECKS:
+            w.record(self.project, check, 'pass', self.evidence)
+        w.deliver(self.project, output, 'Test', 'Test author', 'Test terms')
+        manifest = json.loads((output / 'manifest.json').read_text())
+        for entry in manifest['files']:
+            self.assertFalse(Path(entry['path']).is_absolute())
+            self.assertEqual(w.sha(output / entry['path']), entry['sha256'])
+        with self.assertRaises(ValueError):
+            w.deliver(self.project, output, 'Test', 'Test author', 'Test terms')
 
     def test_platform_assets(self):
         self.assertEqual(w.platform_key('Darwin', 'arm64'), 'darwin-arm64')

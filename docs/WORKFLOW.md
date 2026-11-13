@@ -18,7 +18,13 @@ Image 使用当前宿主提供的图像工具；缺少该能力时提示用户�
 
 以原图保持角色身份、颜色、比例、服装和配饰一致。正面、侧面、背面使用一致的站姿、身高和脚底基线，头顶、耳朵及双脚完整可见。明确每个视角，背面呈现角色背部结构。原图未展示的细节作为补全设计供用户确认。
 
-保存原图和生成图，展示三视图结果。用户确认或提出修改后，完成所需调整，再将 `reference` 检查项记录为通过，进入模型生成。已有完整三视图时直接检查与确认。
+保存原图和生成图，登记补充视图：
+
+```sh
+python3 scripts/workflow.py references projects/my-avatar /path/to/three-views.png
+```
+
+可传入多张图片。登记后展示三视图结果。用户确认或提出修改后，完成所需调整，再将 `reference` 检查项记录为通过，进入模型生成。已有完整三视图时直接检查与确认。
 
 ## 2. 生成与组装
 
@@ -40,7 +46,7 @@ Image 使用当前宿主提供的图像工具；缺少该能力时提示用户�
 
 ## 5. 导出与测试
 
-导出 VRM，在独立场景重新导入，核对材质、贴图、骨骼、表情和物理。随后在 XR Animator 中载入最终文件，完成 [模型与动作检查](ACCEPTANCE.md)。
+导出前确认模型名称、作者和使用条件，写入 VRM 元数据。打包源文件所需贴图，导出 VRM，在独立场景重新导入，核对材质、贴图、骨骼、表情和物理。随后在 XR Animator 中载入最终文件，完成 [模型与动作检查](ACCEPTANCE.md)。
 
 ## 任务记录
 
@@ -54,7 +60,11 @@ python3 scripts/workflow.py task projects/my-avatar head-geometry-01 completed
 
 提交后将 URL 替换为该任务的实际地址；可通过 `--credits` 记录已核实的消耗。下载并检查生成结果后标记完成。
 
-结果未知时查询原任务。确认失败或取消后，如需重试，为新尝试建立关联记录，并重新检查剩余预算。
+结果未知时查询原任务。确认失败或取消后，如需重试，为新尝试建立关联记录，并重新检查剩余预算。失败任务核对状态及积分处理后，用报告关闭该尝试：
+
+```sh
+python3 scripts/workflow.py resolve-task projects/my-avatar head-geometry-01 --evidence projects/my-avatar/reports/task-resolution.md
+```
 
 ## 项目保存
 
