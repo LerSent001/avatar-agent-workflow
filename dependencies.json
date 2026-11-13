@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "charakuru": {
+    "required": true,
+    "version": "v1.1.1",
+    "repository": "nanocle/Charakuru",
+    "license_url": "https://github.com/nanocle/Charakuru/blob/main/LICENSE",
+    "assets": {
+      "all": {
+        "name": "charakuru-1.1.1-2026-11-02T09-36-05-842Z.zip",
+        "url": "https://github.com/nanocle/Charakuru/releases/download/v1.1.1/charakuru-1.1.1-2026-11-02T09-36-05-842Z.zip",
+        "sha256": "130efef11e087263729842b5523e67d660b33d160e8c118df1c96a9ce50faf3d"
+      }
+    }
+  },
+  "xr-animator": {
+    "required": true,
+    "version": "XR-Animator_v0.36.0",
+    "repository": "ButzYung/SystemAnimatorOnline",
+    "assets": {
+      "linux-x64": {
+        "name": "XR-Animator_v0.36.0_linux-x64.zip",
+        "url": "https://github.com/ButzYung/SystemAnimatorOnline/releases/download/XR-Animator_v0.36.0/XR-Animator_v0.36.0_linux-x64.zip",
+        "sha256": "62797bc6162f4234612cf9c6c5f46b0766e9b9272ee69fd90cfd738796a7d861"
+      },
+      "darwin-arm64": {
+        "name": "XR-Animator_v0.36.0_macOS-ARM64_beta-04.zip",
+        "url": "https://github.com/ButzYung/SystemAnimatorOnline/releases/download/XR-Animator_v0.36.0/XR-Animator_v0.36.0_macOS-ARM64_beta-04.zip",
+        "sha256": "1d6662178ecd250eb5084ffd9f4b2bd6619b49ae9ff723c443cc2a425e7d4fb5"
+      },
+      "darwin-x64": {
+        "name": "XR-Animator_v0.36.0_macOS-x64_beta-04.zip",
+        "url": "https://github.com/ButzYung/SystemAnimatorOnline/releases/download/XR-Animator_v0.36.0/XR-Animator_v0.36.0_macOS-x64_beta-04.zip",
+        "sha256": "29f353319ae82226fae8e862038e3fb5dc10b7edcbceb5441601c4b8a89811e6"
+      },
+      "windows-x64": {
+        "name": "XR-Animator_v0.36.0_windows.zip",
+        "url": "https://github.com/ButzYung/SystemAnimatorOnline/releases/download/XR-Animator_v0.36.0/XR-Animator_v0.36.0_windows.zip",
+        "sha256": "7c15ec6933e86f34136a5a2865bc8064f1ba8eaac315805d47c169252633d06c"
+      }
+    }
+  }
+}

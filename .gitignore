@@ -1,0 +1,14 @@
+.local/
+projects/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.zip
+*.blend
+*.blend1
+*.vrm
+*.fbx
+*.glb
+*.log

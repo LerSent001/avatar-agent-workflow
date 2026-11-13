@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+"""Local bootstrap, progress ledger and delivery gate. No paid service calls."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import platform
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from urllib.request import Request, urlopen
+import webbrowser
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+HOME = Path(os.environ.get('AVATAR_WORKFLOW_HOME', str(ROOT / '.local'))).resolve()
+CHECKS = ('reference', 'environment', 'geometry', 'rig', 'expressions', 'springs',
+          'export_reimport', 'xr_loaded', 'live_capture')
+LINKS = {
+    'tripo': 'https://studio.tripo3d.ai/',
+    'charakuru': 'https://github.com/nanocle/Charakuru/releases',
+    'xr-animator': 'https://github.com/ButzYung/SystemAnimatorOnline/releases',
+    'blender': 'https://www.blender.org/download/',
+    'node': 'https://nodejs.org/en/download',
+    'vrm-addon': 'https://github.com/saturday06/VRM-Addon-for-Blender/releases',
+}
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def save(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix='.writing-')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write('\n')
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def sha(path):
+    h = hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def platform_key(system=None, machine=None):
+    system = (system or platform.system()).lower()
+    machine = (machine or platform.machine()).lower()
+    arch = {'aarch64': 'arm64', 'arm64': 'arm64', 'amd64': 'x64', 'x86_64': 'x64'}.get(machine)
+    if not arch or system not in ('darwin', 'windows', 'linux'):
+        raise ValueError(f'Unsupported platform: {system}/{machine}; consult official downloads.')
+    return f'{system}-{arch}'
+
+
+def deps():
+    return {k: v for k, v in json.loads((ROOT / 'dependencies.json').read_text()).items() if isinstance(v, dict) and 'assets' in v}
+
+
+def resolve(name, key=None):
+    d = deps()[name]
+    a = d['assets'].get('all') or d['assets'].get(key or platform_key())
+    if not a:
+        raise ValueError(f'{name}: no verified official package for this architecture.')
+    return d, a
+
+
+def download(name):
+    d, a = resolve(name)
+    url = a['url']
+    if not url.startswith(f"https://github.com/{d['repository']}/releases/download/"):
+        raise ValueError('Dependency URL must be an official repository release asset.')
+    target = HOME / 'downloads' / a['name']
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        partial = target.with_suffix(target.suffix + '.partial')
+        try:
+            with urlopen(Request(url, headers={'User-Agent': 'avatar-agent-workflow/0.1'}), timeout=60) as r, partial.open('wb') as f:
+                shutil.copyfileobj(r, f)
+            digest = sha(partial)
+            if a.get('sha256') and digest != a['sha256']:
+                raise ValueError('Official release checksum mismatch; package was not installed.')
+            os.replace(partial, target)
+        finally:
+            partial.unlink(missing_ok=True)
+    digest = sha(target)
+    if a.get('sha256') and digest != a['sha256']:
+        raise ValueError('Cached archive checksum mismatch; remove this cache and retry.')
+    save(target.with_suffix('.receipt.json'), {'source': url, 'version': d['version'],
+         'sha256': digest, 'publisher_digest_verified': bool(a.get('sha256')), 'checked_at': now()})
+    return target
+
+
+def validate_zip(z):
+    """Reject absolute/traversal paths and escaping symlinks before extraction."""
+    for info in z.infolist():
+        p = PurePosixPath(info.filename.replace('\\', '/'))
+        if p.is_absolute() or '..' in p.parts or any(':' in s for s in p.parts):
+            raise ValueError('Unsafe archive path: ' + info.filename)
+        if stat.S_ISLNK(info.external_attr >> 16):
+            link = z.read(info).decode('utf-8')
+            q = PurePosixPath(link.replace('\\', '/'))
+            if q.is_absolute() or any(':' in s for s in q.parts):
+                raise ValueError('Unsafe archive symlink')
+            depth = len(p.parent.parts)
+            for part in q.parts:
+                depth += -1 if part == '..' else 0 if part == '.' else 1
+                if depth < 0:
+                    raise ValueError('Escaping archive symlink')
+
+
+def unpack(name):
+    archive = download(name)
+    d, _ = resolve(name)
+    dest = HOME / 'tools' / name / d['version']
+    receipt = dest / '.workflow-installed.json'
+    if receipt.exists():
+        return dest
+    if dest.exists():
+        raise ValueError(f'Incomplete installation at {dest}; inspect before retrying.')
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix='install-', dir=dest.parent))
+    try:
+        with zipfile.ZipFile(archive) as z:
+            validate_zip(z)
+            if platform.system() == 'Darwin':
+                # ditto preserves application symlinks and executable permissions.
+                subprocess.run(['/usr/bin/ditto', '-x', '-k', str(archive), str(staging)], check=True)
+            else:
+                # No bundled symlink packages are supported by this extractor.
+                if any(stat.S_ISLNK(i.external_attr >> 16) for i in z.infolist()):
+                    raise ValueError('Use the official platform extractor for this symlink archive.')
+                z.extractall(staging)
+                if platform.system() != 'Windows':
+                    for i in z.infolist():
+                        mode = (i.external_attr >> 16) & 0o777
+                        if mode:
+                            (staging / i.filename).chmod(mode)
+        save(staging / '.workflow-installed.json', {'archive_sha256': sha(archive), 'installed_at': now(),
+             'note': 'Extracted only. Agent must verify launch, plugins, and camera separately.'})
+        staging.rename(dest)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return dest
+
+
+def doctor():
+    result = {'platform': platform_key(), 'required': {}, 'capabilities_to_verify': [
+        'browser control', 'image generation when needed', 'local file and process access',
+        'Blender automation', 'XR Animator launch', 'camera consent and live capture']}
+    for name in ('python3', 'node', 'git', 'blender'):
+        path = shutil.which(name)
+        result['required'][name] = {'path': path, 'detected': bool(path)}
+        if path and name in ('node', 'python3'):
+            r = subprocess.run([path, '--version'], capture_output=True, text=True, timeout=10)
+            result['required'][name]['version'] = r.stdout.strip()
+            if name == 'node':
+                result['required'][name]['compatible'] = r.returncode == 0 and int(r.stdout.strip().lstrip('v').split('.')[0]) >= 22
+    for name in deps():
+        result['required'][name] = {'required': True, 'local_receipts': [str(p) for p in
+            (HOME / 'tools' / name).glob('*/.workflow-installed.json')], 'launch_verified': False}
+    result['note'] = 'PATH checks are not exhaustive. Agent must inspect installed applications and register reuse in project evidence. Extraction is not acceptance.'
+    return result
+
+
+def state_path(project):
+    return Path(project).resolve() / 'state.json'
+
+
+def load(project):
+    return json.loads(state_path(project).read_text(encoding='utf-8'))
+
+
+def init(project, image):
+    p = state_path(project)
+    if p.exists():
+        raise ValueError('Project already exists; use status to resume.')
+    image = Path(image).resolve()
+    if not image.is_file() or image.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):
+        raise ValueError('Provide an existing PNG/JPEG/WebP reference image.')
+    target = p.parent / 'input' / ('reference' + image.suffix.lower())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(image, target)
+    s = {'schema': 1, 'created_at': now(), 'input': str(target.relative_to(p.parent)),
+         'input_sha256': sha(target), 'checks': {}, 'tasks': {}, 'blocker': None, 'history': []}
+    save(p, s)
+    return s
+
+
+def record(project, check, status, evidence):
+    s = load(project)
+    e = Path(evidence).resolve()
+    if not e.is_file():
+        raise ValueError('Evidence must be an existing report, screenshot, or user test record.')
+    if check in ('environment', 'xr_loaded', 'live_capture', 'rig', 'export_reimport') and status == 'not_applicable':
+        raise ValueError('This mandatory check cannot be skipped.')
+    s['checks'][check] = {'status': status, 'evidence': str(e), 'sha256': sha(e), 'at': now()}
+    s['history'].append({'event': 'check', 'check': check, 'status': status, 'at': now()})
+    save(state_path(project), s)
+    return s['checks'][check]
+
+
+def task(project, key, status, url=None, cost=None):
+    s = load(project)
+    old = s['tasks'].get(key)
+    if old and status == 'intent':
+        raise ValueError('Task key exists. Inspect the original task; never resubmit blindly.')
+    if not old and status != 'intent':
+        raise ValueError('Record an intent before any paid submission.')
+    if status in ('submitted', 'completed') and not (url or (old or {}).get('url')):
+        raise ValueError('Record the actual task URL after submission.')
+    entry = dict(old or {})
+    entry.update({'status': status, 'updated_at': now()})
+    if url:
+        if not url.startswith('https://studio.tripo3d.ai/'):
+            raise ValueError('Use the actual official Tripo task URL.')
+        entry['url'] = url
+    if cost is not None:
+        if cost < 0:
+            raise ValueError('Credit cost cannot be negative.')
+        entry['credits'] = cost
+    s['tasks'][key] = entry
+    s['history'].append({'event': 'task', 'key': key, **entry})
+    save(state_path(project), s)
+    return entry
+
+
+def readiness(s):
+    missing = []
+    for c in CHECKS:
+        item = s['checks'].get(c, {})
+        allowed = ('pass', 'not_applicable') if c in ('expressions', 'springs') else ('pass',)
+        if item.get('status') not in allowed:
+            missing.append(c)
+            continue
+        evidence = Path(item.get('evidence', ''))
+        if not evidence.is_file() or sha(evidence) != item.get('sha256'):
+            missing.append(c + ': evidence missing or changed')
+    unfinished = [k for k, v in s['tasks'].items() if v['status'] not in ('completed', 'cancelled')]
+    return {'ready': not missing and not unfinished and s.get('blocker') is None,
+            'missing_checks': missing, 'unfinished_tasks': unfinished, 'blocker': s.get('blocker'),
+            'note': 'Recorded evidence must be reviewed by the Agent. This gate does not judge image quality or prove live capture by itself.'}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='command', required=True)
+    sub.add_parser('doctor')
+    for cmd in ('download', 'install'):
+        p = sub.add_parser(cmd); p.add_argument('name', choices=tuple(deps()))
+    p = sub.add_parser('open'); p.add_argument('service', choices=tuple(LINKS))
+    p = sub.add_parser('init'); p.add_argument('project'); p.add_argument('--image', required=True)
+    for cmd in ('status', 'ready'):
+        p = sub.add_parser(cmd); p.add_argument('project')
+    p = sub.add_parser('check'); p.add_argument('project'); p.add_argument('name', choices=CHECKS)
+    p.add_argument('status', choices=('pass', 'fail', 'pending', 'not_applicable')); p.add_argument('--evidence', required=True)
+    p = sub.add_parser('task'); p.add_argument('project'); p.add_argument('key')
+    p.add_argument('status', choices=('intent', 'submitted', 'unknown', 'completed', 'failed', 'cancelled'))
+    p.add_argument('--url'); p.add_argument('--credits', type=int)
+    p = sub.add_parser('block'); p.add_argument('project'); p.add_argument('reason', choices=(
+        'login_required', 'insufficient_credits', 'balance_unknown', 'permission_required', 'capability_missing', 'clear'))
+    p.add_argument('--note', default='')
+    a = parser.parse_args()
+    try:
+        if a.command == 'doctor': result = doctor()
+        elif a.command == 'download': result = {'archive': str(download(a.name))}
+        elif a.command == 'install': result = {'directory': str(unpack(a.name)), 'next': 'Follow docs/INSTALL.md; verify launch.'}
+        elif a.command == 'open': result = {'url': LINKS[a.service], 'opened': webbrowser.open(LINKS[a.service])}
+        elif a.command == 'init': result = init(a.project, a.image)
+        elif a.command == 'status': result = load(a.project)
+        elif a.command == 'ready': result = readiness(load(a.project))
+        elif a.command == 'check': result = record(a.project, a.name, a.status, a.evidence)
+        elif a.command == 'task': result = task(a.project, a.key, a.status, a.url, a.credits)
+        elif a.command == 'block':
+            s = load(a.project)
+            s['blocker'] = None if a.reason == 'clear' else {'reason': a.reason, 'note': a.note, 'at': now()}
+            s['history'].append({'event': 'blocker', 'value': s['blocker'], 'at': now()})
+            save(state_path(a.project), s); result = s['blocker']
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if a.command == 'ready' and not result['ready']:
+            return 2
+        return 0
+    except (ValueError, OSError, KeyError, zipfile.BadZipFile, subprocess.SubprocessError) as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
